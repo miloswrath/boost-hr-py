@@ -11,6 +11,7 @@ class Main:
             self.base_path = "/mnt/lss/Projects/BOOST/"
         elif system == "vosslnx":
             self.base_path = "/mnt/lss/vosslabhpc/Projects/BOOST/"
+        self.zone_path = f"{self.base_path}InterventionStudy/3-projectManagement/participants/ExerciseSessionMaterials/Intervention Materials/BOOST HR ranges.xlsx"
         # add logging configuration
         logging.basicConfig(
             level=logging.DEBUG,
@@ -32,6 +33,8 @@ class Main:
         # Here you can add more functionality as needed
         from util.get_files import get_files
         from util.hr.extract_hr import ExtractHR
+        from util.zone.extract_zones import extract_zones
+        from util.zone.midpoint import midpoint_snap
         for project in ["InterventionStudy", "ObservationalStudy"]:
             project_path = os.path.join(self.base_path, project, "3-Experiment", "data", "polarhrcsv")
             if os.path.exists(project_path):
@@ -46,7 +49,9 @@ class Main:
                             for file in subject_files:
                                 logging.debug(f"Processing subject: {subject} with files: {subject_files}")
                                 if file.endswith('.csv'):
-                                    hr = ExtractHR(subject_files).extract_hr(file)
+                                    hr = ExtractHR(subject_files).extract_hr()
+                                    zones = midpoint_snap(extract_zones(self.zone_path, subject))
+
 
 
         
