@@ -65,6 +65,7 @@
               # Data manipulation
               python.pkgs.pandas
               python.pkgs.numpy
+              python.pkgs.openpyxl
 
               # Visualization
               python.pkgs.matplotlib

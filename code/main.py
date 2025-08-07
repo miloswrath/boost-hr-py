@@ -11,7 +11,7 @@ class Main:
             self.base_path = "/mnt/lss/Projects/BOOST/"
         elif system == "vosslnx":
             self.base_path = "/mnt/lss/vosslabhpc/Projects/BOOST/"
-        self.zone_path = f"{self.base_path}InterventionStudy/3-projectManagement/participants/ExerciseSessionMaterials/Intervention Materials/BOOST HR ranges.xlsx"
+        self.zone_path = f"{self.base_path}InterventionStudy/1-projectManagement/participants/ExerciseSessionMaterials/Intervention Materials/BOOST HR ranges.xlsx"
         # add logging configuration
         logging.basicConfig(
             level=logging.DEBUG,
@@ -27,6 +27,7 @@ class Main:
         """
         Main function to run the script.
         """
+        err_master = {}
         # Example usage of the base_path
         if not hasattr(self, 'base_path'):
             raise AttributeError("Base path is not set. Please initialize the class with a valid system.")
@@ -35,6 +36,7 @@ class Main:
         from util.hr.extract_hr import ExtractHR
         from util.zone.extract_zones import extract_zones
         from util.zone.midpoint import midpoint_snap
+        from qc.sup import QC_Sup
         for project in ["InterventionStudy", "ObservationalStudy"]:
             project_path = os.path.join(self.base_path, project, "3-Experiment", "data", "polarhrcsv")
             if os.path.exists(project_path):
@@ -47,10 +49,25 @@ class Main:
                         # extract hr from each file
                         for subject, subject_files in files.items():
                             for file in subject_files:
-                                logging.debug(f"Processing subject: {subject} with files: {subject_files}")
-                                if file.endswith('.csv'):
+                                if file.lower().endswith('.csv'):
                                     hr = ExtractHR(subject_files).extract_hr()
-                                    zones = midpoint_snap(extract_zones(self.zone_path, subject))
+                                    zones = extract_zones(self.zone_path, subject)
+                                    err = QC_Sup(hr, zones).main()
+
+                                    if subject not in err_master:
+                                        # first time: create a list with this one error
+                                        err_master[subject] = [[file,err]]
+                                    else:
+                                        # append to the existing list
+                                        err_master[subject].append([file,err])
+        err_master = {
+            subject: [e for e in errs if e]
+            for subject, errs in err_master.items()
+        }
+        return err_master
+
+
+                                
 
 
 
