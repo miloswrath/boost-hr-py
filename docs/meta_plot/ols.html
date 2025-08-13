@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset="utf-8">
+<body>
+<div id="chart"></div>
+<script type="module">
+import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+
+async function main() {
+  const df = await d3.csv("data.csv", d3.autoType); // sup_prop, unsup_prop, unsup_den
+  df.forEach(d => { if (d.unsup_den == null) d.unsup_den = 30; });
+
+  // load model.json
+  const model = await fetch("model.json").then(r => r.json());
+  const { beta0: b0, beta1: b1 } = model.params;
+
+  const width = 640, height = 480, margin = {top:30,right:20,bottom:40,left:48};
+  const x = d3.scaleLinear().domain([0,1]).range([margin.left, width - margin.right]);
+  const y = d3.scaleLinear().domain([0,1]).range([height - margin.bottom, margin.top]);
+
+  const mMin = d3.min(df, d => d.unsup_den), mMax = d3.max(df, d => d.unsup_den);
+  const size = d3.scaleLinear().domain([1,30]).range([15,80]);
+  const alpha = d3.scaleLinear().domain([1,30]).range([0.35,1.0]);
+
+  const svg = d3.select("#chart").append("svg")
+      .attr("width", width).attr("height", height);
+
+  // axes
+  svg.append("g").attr("transform", `translate(0,${height - margin.bottom})`)
+     .call(d3.axisBottom(x));
+  svg.append("g").attr("transform", `translate(${margin.left},0)`)
+     .call(d3.axisLeft(y));
+
+  // scatter
+  svg.append("g")
+    .selectAll("circle")
+    .data(df)
+    .join("circle")
+      .attr("cx", d => x(d.sup_prop))
+      .attr("cy", d => y(d.unsup_prop))
+      .attr("r", d => Math.sqrt(size(d.unsup_den))) // radius ~ sqrt(area)
+      .attr("fill", "steelblue")
+      .attr("opacity", d => alpha(d.unsup_den));
+
+  // OLS line y = b0 + b1 x
+  const lineData = d3.range(0, 1.001, 0.01).map(xv => ({x: xv, y: b0 + b1*xv}));
+  const line = d3.line().x(d => x(d.x)).y(d => y(d.y));
+  svg.append("path")
+     .datum(lineData)
+     .attr("fill", "none")
+     .attr("stroke", "black")
+     .attr("stroke-width", 2)
+     .attr("d", line);
+
+  // Pearson r (unweighted)
+  const xs = df.map(d => d.sup_prop), ys = df.map(d => d.unsup_prop);
+  const mean = a => d3.mean(a);
+  const mx = mean(xs), my = mean(ys);
+  const cov = d3.sum(xs.map((v,i) => (v-mx)*(ys[i]-my))) / (xs.length - 1);
+  const vx  = d3.sum(xs.map(v => (v-mx)**2)) / (xs.length - 1);
+  const vy  = d3.sum(ys.map(v => (v-my)**2)) / (ys.length - 1);
+  const r   = cov / Math.sqrt(vx*vy);
+
+  svg.append("text")
+     .attr("x", margin.left)
+     .attr("y", margin.top - 10)
+     .text(`Pearson r = ${r.toFixed(3)}`)
+     .attr("font-size", 12);
+}
+main();
+</script>

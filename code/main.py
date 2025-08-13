@@ -41,35 +41,43 @@ class Main:
         from util.hr.extract_hr import extract_hr
         from util.zone.extract_zones import extract_zones
         from qc.sup import QC_Sup
-        for project in ["InterventionStudy", "ObservationalStudy"]:
-            project_path = os.path.join(self.base_path, project, "3-Experiment", "data", "polarhrcsv")
-            if os.path.exists(project_path):
-                for session in ["Supervised", "Unsupervised"]:
-                    session_path = os.path.join(project_path, session)
-                    logging.debug(f"Processing session: {session_path}")
-                    if os.path.exists(session_path):
-                        # return the files dict that contains base_path and list of files for each base_path
-                        files = get_files(session_path)
-                        # extract hr from each file
-                        for subject, subject_files in files.items():
-                            for file in subject_files:
-                                if file.lower().endswith('.csv'):
-                                    hr = extract_hr(subject_files)
-                                    zones = extract_zones(self.zone_path, subject)
-                                    err = QC_Sup(hr, zones).main()
+        project_path = os.path.join(self.base_path, "InterventionStudy", "3-Experiment", "data", "polarhrcsv")
+        if os.path.exists(project_path):
+            for session in ["Supervised", "Unsupervised"]:
+                session_path = os.path.join(project_path, session)
+                logging.debug(f"Processing session: {session_path}")
+                if os.path.exists(session_path):
+                    # return the files dict that contains base_path and list of files for each base_path
+                    files = get_files(session_path)
+                    # extract hr from each file
+                    for subject, subject_files in files.items():
+                        for file in subject_files:
+                            if file.lower().endswith('.csv'):
+                                hr = extract_hr(subject_files)
+                                zones = extract_zones(self.zone_path, subject)
+                                err = QC_Sup(hr, zones).main()
 
-                                    if subject not in err_master:
-                                        # first time: create a list with this one error
-                                        err_master[subject] = [[file,err]]
-                                    else:
-                                        # append to the existing list
-                                        err_master[subject].append([file,err])
+                                if subject not in err_master:
+                                    # first time: create a list with this one error
+                                    err_master[subject] = [[file,err]]
+                                else:
+                                    # append to the existing list
+                                    err_master[subject].append([file,err])
         err_master = {
             subject: [e for e in errs if e]
             for subject, errs in err_master.items()
         }
         from qc.save_qc import save_qc
         save_qc(err_master, self.out_path)
+        from plot.get_data import Get_Data
+        path = os.path.join(self.base_path, "InterventionStudy", "3-Experiment", "data", "polarhrcsv")
+        gd = Get_Data(sup_path=os.path.join(path, "Supervised"), unsup_path=os.path.join(path, "Unsupervised"), study="InterventionStudy")
+        meta = gd.get_meta()
+        df_master = gd.build_master_df()
+        gd.save_for_rust("../rust-ols-adherence-cli/data.csv")
+
+
+
         return err_master
 
 

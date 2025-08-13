@@ -1,92 +1,112 @@
 {
-  description = "A Nix-flake-based Python development environment";
+  description = "Unified Python + Rust dev environment (venv + rust-toolchain)";
 
-  inputs.nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1.*.tar.gz";
+  inputs = {
+    nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1.*.tar.gz";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
 
-  outputs = { self, nixpkgs }:
+  outputs = { self, nixpkgs, rust-overlay }:
     let
-      supportedSystems = [ "x86_64-linux"  "aarch64-darwin" ];
-      forEachSupportedSystem = f: nixpkgs.lib.genAttrs supportedSystems (system: f {
-        pkgs = import nixpkgs { inherit system; };
-      });
+      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
 
-      /*
-       * Change this value ({major}.{min}) to
-       * update the Python virtual-environment
-       * version. When you do this, make sure
-       * to delete the `.venv` directory to
-       * have the hook rebuild it for the new
-       * version, since it won't overwrite an
-       * existing one. After this, reload the
-       * development shell to rebuild it.
-       * You'll see a warning asking you to
-       * do this when version mismatches are
-       * present. For safety, removal should
-       * be a manual step, even if trivial.
-       */
-      version = "3.13";
+      forEachSupportedSystem = f:
+        nixpkgs.lib.genAttrs supportedSystems (system:
+          f {
+            pkgs = import nixpkgs {
+              inherit system;
+              overlays = [ rust-overlay.overlays.default self.overlays.default ];
+            };
+          });
+
+      # Change this to bump Python minor (delete .venv after changing!)
+      pyVersion = "3.13";
+
+      concatMajorMinor = v: pkgs:
+        pkgs.lib.pipe v [
+          pkgs.lib.versions.splitVersion
+          (pkgs.lib.sublist 0 2)
+          pkgs.lib.concatStrings
+        ];
     in
     {
+      overlays.default = final: prev: {
+        # Prefer rust-toolchain.toml if present; otherwise latest stable with src+fmt.
+        rustToolchain =
+          let rb = prev.rust-bin; in
+          if builtins.pathExists ./rust-toolchain.toml then
+            rb.fromRustupToolchainFile ./rust-toolchain.toml
+          else if builtins.pathExists ./rust-toolchain then
+            rb.fromRustupToolchainFile ./rust-toolchain
+          else
+            rb.stable.latest.default.override {
+              extensions = [ "rust-src" "rustfmt" ];
+            };
+      };
+
       devShells = forEachSupportedSystem ({ pkgs }:
         let
-          concatMajorMinor = v:
-            pkgs.lib.pipe v [
-              pkgs.lib.versions.splitVersion
-              (pkgs.lib.sublist 0 2)
-              pkgs.lib.concatStrings
-            ];
-
-          python = pkgs."python${concatMajorMinor version}";
+          python = pkgs."python${concatMajorMinor pyVersion pkgs}";
         in
         {
-          default = pkgs.mkShellNoCC {
+          # single, unified shell
+          default = pkgs.mkShell {
             venvDir = ".venv";
 
-            postShellHook = ''
-              venvVersionWarn() {
-              	local venvVersion
-              	venvVersion="$("$venvDir/bin/python" -c 'import platform; print(platform.python_version())')"
-
-              	[[ "$venvVersion" == "${python.version}" ]] && return
-
-              	cat <<EOF
-              Warning: Python version mismatch: [$venvVersion (venv)] != [${python.version}]
-                       Delete '$venvDir' and reload to rebuild for version ${python.version}
-              EOF
-              }
-
-              venvVersionWarn
-            '';
-
-            packages = [
+            packages = with pkgs; [
+              # ---- Python toolchain + libs ----
               python.pkgs.venvShellHook
               python.pkgs.pip
-
-              # Data manipulation
               python.pkgs.pandas
               python.pkgs.numpy
               python.pkgs.openpyxl
-
-              # Visualization
               python.pkgs.matplotlib
               python.pkgs.seaborn
               python.pkgs.plotly
-
-              # API requests
               python.pkgs.requests
               python.pkgs.httpx
-
-              # Jupyter/IPython for interactive work
               python.pkgs.jupyterlab
               python.pkgs.ipython
-
-              # Scientific computing and YAML
               python.pkgs.scipy
               python.pkgs.pyyaml
-              pkgs.git
 
-            ];
-            };
+              # ---- Rust toolchain + helpers ----
+              rustToolchain
+              rust-analyzer
+              cargo-deny
+              cargo-edit
+              cargo-watch
+
+              # ---- Common build deps (openssl for crates, pkg-config, git) ----
+              openssl
+              pkg-config
+              git
+            ] ++ (if pkgs.stdenv.isDarwin then [ pkgs.libiconv ] else []);
+
+            # rust-analyzer needs RUST_SRC_PATH
+            env.RUST_SRC_PATH = "${pkgs.rustToolchain}/lib/rustlib/src/rust/library";
+
+            # Keep your venv version warning helper
+            postShellHook = ''
+              venvVersionWarn() {
+                local venvVersion
+                if [[ -x "$venvDir/bin/python" ]]; then
+                  venvVersion="$("$venvDir/bin/python" -c 'import platform; print(platform.python_version())')"
+                  if [[ "$venvVersion" != "${python.version}" ]]; then
+                    cat <<EOF
+Warning: Python version mismatch: [$venvVersion (venv)] != [${python.version}]
+Delete '$venvDir' and reload to rebuild for version ${python.version}
+EOF
+                  fi
+                fi
+              }
+              venvVersionWarn
+            '';
+          };
         });
     };
 }
+
