@@ -1,3 +1,4 @@
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -46,14 +47,7 @@ pub fn fit_wls(x: &[f64], y: &[f64], w: Option<&[f64]>) -> anyhow::Result<OlsPar
     }
     let n = x.len();
     if n < 2 { anyhow::bail!("need at least 2 observations"); }
-
-    let w_iter: Box<dyn Iterator<Item = f64>> = match w {
-        Some(ws) => {
-            if ws.len() != n { anyhow::bail!("weights length mismatch"); }
-            Box::new(ws.iter().copied())
-        }
-        None => Box::new(std::iter::repeat(1.0).take(n)),
-    };
+    
 
     // Accumulate weighted sums
     let mut s = 0.0; // Σ w
@@ -116,10 +110,11 @@ pub fn make_weights(y: &[f64], unsup_den: Option<&[usize]>, strategy: Weighting)
             if den.len() != y.len() { anyhow::bail!("unsup_den length mismatch"); }
             let eps = 1e-6;
             let w: Vec<f64> = y.iter().zip(den.iter()).map(|(&p, &m)| {
+                const MAX_WEIGHT: f64 = 1000.0; // cap to prevent overflow
                 let p = p.clamp(eps, 1.0 - eps);
                 let m = (m as f64).max(1.0);
-                m / (p * (1.0 - p))
-            }).collect();
+                (m / (p * (1.0 - p))).min(MAX_WEIGHT) // <-- cap here
+        }).collect();
             Ok(Some(w))
         }
     }
