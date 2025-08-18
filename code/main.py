@@ -11,7 +11,7 @@ class Main:
         elif system == "Home":
             self.base_path = "/mnt/lss/Projects/BOOST/"
         elif system == "vosslnx":
-            self.base_path = "/mnt/lss/vosslabhpc/Projects/BOOST/"
+            self.base_path = "/mnt/nfs/lss/vosslabhpc/Projects/BOOST/"
         self.zone_path = f"{self.base_path}InterventionStudy/1-projectManagement/participants/ExerciseSessionMaterials/Intervention Materials/BOOST HR ranges.xlsx"
 
         self.out_path = '../qc_out.csv'
